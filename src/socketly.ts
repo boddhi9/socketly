@@ -1,12 +1,13 @@
 type WebSocketEvent = 'open' | 'close' | 'message' | 'error' | 'reconnect' | '*'
-type EventCallback = (data?: any) => void
+type EventCallback<T = any> = (data?: T) => void
 const MAX_DELAY = 30000
 
 interface WebSocketOptions {
   reconnectInterval?: number
   maxRetries?: number
   logger?: (message: string, ...data: any[]) => void
-  signal?: AbortSignal // optional external signal to control the connection
+  signal?: AbortSignal
+  protocols?: string | string[]
 }
 
 export class Socketly {
@@ -19,6 +20,7 @@ export class Socketly {
   #logger: (message: string, ...data: any[]) => void
   #abortController: AbortController
   #messageQueue: Array<string> = []
+  #protocols?: string | string[]
 
   constructor(url: string, options: WebSocketOptions = {}) {
     this.#url = url
@@ -26,8 +28,8 @@ export class Socketly {
     this.#maxRetries = options.maxRetries ?? Infinity
     this.#logger = options.logger ?? console.log
     this.#abortController = new AbortController()
+    this.#protocols = options.protocols
 
-    // listen for external abort signal
     options.signal?.addEventListener('abort', () => this.close())
 
     this.#connect()
@@ -37,37 +39,28 @@ export class Socketly {
     this.#logger('Connecting to WebSocket:', this.#url)
 
     try {
-      this.#socket = new WebSocket(this.#url)
+      this.#socket = new WebSocket(this.#url, this.#protocols)
 
-      this.#socket.addEventListener('open', () => {
-        this.#logger('WebSocket connected:', this.#url)
-        this.#retryCount = 0
-        this.#flushMessageQueue()
-        this.#emit('open')
-      })
-
-      this.#socket.addEventListener('close', () => this.#handleClose())
-      this.#socket.addEventListener('message', (event) => {
-        const data = JSON.parse(event.data)
-        this.#logger('Message received:', data)
-        this.#emit('message', structuredClone(data))
-      })
-
-      this.#socket.addEventListener('error', (event) =>
-        this.#handleError(event)
-      )
+      this.#socket.addEventListener('open', this.#handleOpen)
+      this.#socket.addEventListener('close', this.#handleClose)
+      this.#socket.addEventListener('message', this.#handleMessage)
+      this.#socket.addEventListener('error', this.#handleError)
     } catch (error: unknown) {
       this.#logger('WebSocket connection error:', error)
-
-      if (error instanceof Error) {
-        this.#handleError(error)
-      } else {
-        this.#handleError(new Error('An unknown error occurred'))
-      }
+      this.#handleError(
+        error instanceof Error ? error : new Error('An unknown error occurred')
+      )
     }
   }
 
-  #handleClose() {
+  #handleOpen = (): void => {
+    this.#logger('WebSocket connected:', this.#url)
+    this.#retryCount = 0
+    this.#flushMessageQueue()
+    this.#emit('open')
+  }
+
+  #handleClose = (): void => {
     this.#logger('WebSocket closed:', this.#url)
     this.#emit('close')
 
@@ -77,14 +70,27 @@ export class Socketly {
     ) {
       const delay = this.#exponentialBackoff(this.#retryCount++)
       this.#logger(`Reconnecting in ${delay}ms (attempt ${this.#retryCount})`)
-      this.#emit('reconnect')
+      this.#emit('reconnect', { attempt: this.#retryCount, delay })
       setTimeout(() => this.#connect(), delay)
     } else {
       this.#logger('Max reconnect attempts reached or connection aborted.')
     }
   }
 
-  #handleError(error: Event | Error): void {
+  #handleMessage = (event: MessageEvent): void => {
+    try {
+      const data = JSON.parse(event.data)
+      this.#logger('Message received:', data)
+      this.#emit('message', structuredClone(data))
+    } catch (error) {
+      this.#logger('Error parsing message:', error)
+      this.#handleError(
+        error instanceof Error ? error : new Error('Failed to parse message')
+      )
+    }
+  }
+
+  #handleError = (error: Event | Error): void => {
     if (error instanceof Error) {
       this.#logger('WebSocket error (Error object):', error.message)
     } else if (error instanceof Event) {
@@ -106,31 +112,27 @@ export class Socketly {
   }
 
   #emit(event: WebSocketEvent, data?: any): void {
-    if (event !== '*') {
-      this.#eventListeners.get(event)?.forEach((callback) => callback(data))
-    }
+    this.#eventListeners.get(event)?.forEach((callback) => callback(data))
     this.#eventListeners
       .get('*')
       ?.forEach((callback) => callback({ event, data }))
   }
 
   #exponentialBackoff(attempt: number): number {
-    const baseDelay = this.#reconnectInterval
-    const maxDelay = MAX_DELAY
-    return Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
+    return Math.min(this.#reconnectInterval * Math.pow(2, attempt), MAX_DELAY)
   }
 
-  public on(event: WebSocketEvent, callback: EventCallback): void {
+  public on<T = any>(event: WebSocketEvent, callback: EventCallback<T>): void {
     let listeners = this.#eventListeners.get(event)
     if (!listeners) {
       listeners = new Set()
       this.#eventListeners.set(event, listeners)
     }
-    listeners.add(callback)
+    listeners.add(callback as EventCallback)
   }
 
-  public off(event: WebSocketEvent, callback: EventCallback): void {
-    this.#eventListeners.get(event)?.delete(callback)
+  public off<T = any>(event: WebSocketEvent, callback: EventCallback<T>): void {
+    this.#eventListeners.get(event)?.delete(callback as EventCallback)
   }
 
   public send(data: any): void {
@@ -151,6 +153,7 @@ export class Socketly {
     await Promise.allSettled(
       Array.from(this.#eventListeners.values()).map((listeners) => {
         listeners.clear()
+        return Promise.resolve()
       })
     )
 
@@ -159,10 +162,21 @@ export class Socketly {
 
   public async *messages(): AsyncIterable<any> {
     while (true) {
-      const message = await new Promise((resolve) => {
-        this.on('message', resolve)
+      yield await new Promise<any>((resolve) => {
+        const onMessage = (data: any) => {
+          this.off('message', onMessage)
+          resolve(data)
+        }
+        this.on('message', onMessage)
       })
-      yield structuredClone(message)
     }
+  }
+
+  public getState(): WebSocket['readyState'] {
+    return this.#socket.readyState
+  }
+
+  public isConnected(): boolean {
+    return this.#socket.readyState === WebSocket.OPEN
   }
 }

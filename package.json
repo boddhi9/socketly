@@ -2,12 +2,12 @@
   "name": "socketly",
   "version": "1.0.0",
   "description": "A tiny, lightweight WebSocket library with reconnect and event-driven handling.",
-  "main": "dist/socketly.js",
-  "types": "dist/socketly.d.ts",
+  "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "vite build",
     "lint": "eslint 'src/**/*.ts'",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "release": "commit-and-tag-version"
   },
   "keywords": [
     "websocket",
@@ -22,8 +22,11 @@
     "@types/node": "^22.9.3",
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
+    "commit-and-tag-version": "^12.5.0",
     "eslint": "^9.15.0",
     "prettier": "^3.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vite-plugin-dts": "^4.3.0"
   }
 }
