@@ -1,0 +1,29 @@
+{
+  "name": "socketly",
+  "version": "1.0.0",
+  "description": "A tiny, lightweight WebSocket library with reconnect and event-driven handling.",
+  "main": "dist/socketly.js",
+  "types": "dist/socketly.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint 'src/**/*.ts'",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "websocket",
+    "typescript",
+    "lightweight",
+    "event-driven",
+    "reconnect"
+  ],
+  "author": "Krum Georgiev",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.9.3",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.7.2"
+  }
+}
