@@ -1,10 +1,8 @@
 name: 'Dependency review'
 
 on:
-  # Trigger on pull requests to main
   pull_request:
     branches: [ "main" ]
-  # Trigger on pushes to main
   push:
     branches: [ "main" ]
 
@@ -15,10 +13,20 @@ permissions:
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@v4
+
+      # Conditionally handle pull requests and pushes
       - name: 'Dependency Review'
+        if: ${{ github.event_name == 'pull_request' }}
         uses: actions/dependency-review-action@v4
         with:
           comment-summary-in-pr: always
+
+      - name: 'Dependency Snapshot Submission'
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical # Or adjust as needed
