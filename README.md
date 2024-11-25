@@ -1,5 +1,7 @@
 # Socketly
 
+[![CodeQL Advanced](https://github.com/boddhi9/socketly/actions/workflows/codeql.yml/badge.svg)](https://github.com/boddhi9/socketly/actions/workflows/codeql.yml)
+
 **Socketly** is a tiny, lightweight WebSocket library for TypeScript with built-in reconnect functionality and an event-driven API.
 
 ## Features
